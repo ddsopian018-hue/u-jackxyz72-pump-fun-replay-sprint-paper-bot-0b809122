@@ -259,6 +259,9 @@ export function createStrategy(p: Params = DEFAULT_PARAMS) {
     for (const [mint, h] of state.positions) equity += liquidationValue(marks.get(mint), h.token_amount);
     if (peakEquity === 0n || equity > peakEquity) peakEquity = equity;
     const brakesLive = tripsClosed >= p.minTripsBeforeBrakes;
+    // Bleed brake: once brakes are live and the bot is underwater (equity
+    // below starting capital), slow the bleeding by capping new entries.
+    const entryCap = brakesLive && equity < startCash ? 2 : p.maxEntriesPerBatch;
     if (brakesLive && !stopped) {
       if (equity - startCash >= p.bankTarget) stopped = true;
       else if (peakEquity - equity >= p.drawdownLimit) stopped = true;
@@ -310,7 +313,7 @@ export function createStrategy(p: Params = DEFAULT_PARAMS) {
       let entries = 0;
       let open = state.committedPositionCount();
       for (const mint of touched) {
-        if (orders.length >= cap || entries >= p.maxEntriesPerBatch) break;
+        if (orders.length >= cap || entries >= entryCap) break;
         if (open >= state.hello.caps.max_open_positions) break;
         if (state.positions.has(mint) || pendingMints.has(mint)) continue;
         const curve = state.curves.get(mint);
